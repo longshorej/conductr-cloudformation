@@ -355,7 +355,7 @@ Resources:
           InstancePort: 9999
       HealthCheck:
         Target: HTTP:9009/status
-        Interval: 5
+        Interval: 10
         Timeout: 5
         UnhealthyThreshold: 2
         HealthyThreshold: 3
