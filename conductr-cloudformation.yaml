@@ -12,6 +12,10 @@ Metadata:
         Parameters:
           - VpcCidrBlock
           - SubnetCidrBlocks
+      - Label:
+          default: Instance Configuration
+        Parameters:
+          - KeyName
 
 Parameters:
   VpcCidrBlock:
@@ -24,6 +28,13 @@ Parameters:
     Type: CommaDelimitedList
     Default: "10.23.0.0/24, 10.23.1.0/24, 10.23.2.0/24"
     Description: CIDR blocks for the three subnets, separated by commas. These must fall within the VPC CIDR block.
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: The EC2 key pair to use to SSH to your new ConductR instances. Be sure that you have a copy of the private key.
+
+# Mappings:
+  # TODO: add a lookup from AWS region to AMI ID
+  # See http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
 
 Resources:
   # The network: a VPC, three public subnets, and a route to the internet
@@ -186,6 +197,62 @@ Resources:
       ToPort: 10999
       SourceSecurityGroupId: !Ref NodesSecurityGroup
 
+  # The ConductR Cluster Instances
+  Node0:
+    Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      KeyName: !Ref KeyName
+      InstanceType: "t2.xlarge" # TODO: make configurable?
+      AvailabilityZone: !GetAtt Subnet0.AvailabilityZone
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          AssociatePublicIpAddress: "true"
+          GroupSet: [ !Ref NodesSecurityGroup ]
+          SubnetId: !Ref Subnet0
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Node 0
+        - Key: Role
+          Value: Seed Node
+  Node1:
+    Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      KeyName: !Ref KeyName
+      InstanceType: "t2.xlarge" # TODO: make configurable?
+      AvailabilityZone: !GetAtt Subnet1.AvailabilityZone
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          AssociatePublicIpAddress: "true"
+          GroupSet: [ !Ref NodesSecurityGroup ]
+          SubnetId: !Ref Subnet1
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Node 1
+        - Key: Role
+          Value: Node
+  Node2:
+    Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      KeyName: !Ref KeyName
+      InstanceType: "t2.xlarge" # TODO: make configurable?
+      AvailabilityZone: !GetAtt Subnet2.AvailabilityZone
+      NetworkInterfaces:
+        - DeviceIndex: "0"
+          AssociatePublicIpAddress: "true"
+          GroupSet: [ !Ref NodesSecurityGroup ]
+          SubnetId: !Ref Subnet2
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Node 2
+        - Key: Role
+          Value: Node
+
   # Load Balancer
   ELB:
     Type: AWS::ElasticLoadBalancing::LoadBalancer
@@ -207,6 +274,10 @@ Resources:
         Timeout: 5
         UnhealthyThreshold: 2
         HealthyThreshold: 3
+      Instances:
+        - !Ref Node0
+        - !Ref Node1
+        - !Ref Node2
 
 # Outputs: TODO
 #   vpc
