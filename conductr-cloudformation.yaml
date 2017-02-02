@@ -44,9 +44,14 @@ Parameters:
     NoEcho: true
     Description: Your Reactive Platform password from https://www.lightbend.com/product/lightbend-reactive-platform/credentials
 
-# Mappings:
-  # TODO: add a lookup from AWS region to AMI ID
+Mappings:
+  # TODO: add AMIs to more regions
   # See http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/mappings-section-structure.html
+  RegionMap:
+    us-east-1:
+      AMI: ami-ca4ab2dc
+    us-west-2:
+      AMI: ami-8044ffe0
 
 Resources:
   # The network: a VPC, three public subnets, and a route to the internet
@@ -223,8 +228,12 @@ Resources:
               env:
                 LIGHTBEND_USER: !Ref LightbendUser
                 LIGHTBEND_PASSWORD: !Ref LightbendPassword
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
     Properties:
-      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet0.AvailabilityZone
@@ -237,6 +246,7 @@ Resources:
         'Fn::Base64': !Sub |
            #!/bin/bash -xe
            /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node0 --region ${AWS::Region}
+           /usr/local/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource Node0 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 0
@@ -256,8 +266,12 @@ Resources:
                 LIGHTBEND_USER: !Ref LightbendUser
                 LIGHTBEND_PASSWORD: !Ref LightbendPassword
                 SEED_NODE: !GetAtt Node0.PrivateIp
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
     Properties:
-      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet1.AvailabilityZone
@@ -270,6 +284,7 @@ Resources:
         'Fn::Base64': !Sub |
            #!/bin/bash -xe
            /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node1 --region ${AWS::Region}
+           /usr/local/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource Node1 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 1
@@ -277,7 +292,9 @@ Resources:
           Value: Node
   Node2:
     Type: AWS::EC2::Instance
-    DependsOn: VPCGatewayAttachment
+    DependsOn:
+      - VPCGatewayAttachment
+      - Node1 # This ensures the rest of the cluster has started before loading bundles
     Metadata:
       AWS::CloudFormation::Init:
         config:
@@ -289,8 +306,19 @@ Resources:
                 LIGHTBEND_USER: !Ref LightbendUser
                 LIGHTBEND_PASSWORD: !Ref LightbendPassword
                 SEED_NODE: !GetAtt Node0.PrivateIp
+            01_wait:
+              command: sleep 10
+            02_bundles:
+              command: su ubuntu /home/ubuntu/bundles.sh
+              cwd: /home/ubuntu
+              env:
+                NODE_COUNT: 3
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT10M
     Properties:
-      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet2.AvailabilityZone
@@ -303,6 +331,7 @@ Resources:
         'Fn::Base64': !Sub |
            #!/bin/bash -xe
            /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node2 --region ${AWS::Region}
+           /usr/local/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource Node2 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 2
@@ -326,7 +355,7 @@ Resources:
           InstancePort: 9999
       HealthCheck:
         Target: HTTP:9009/status
-        Interval: 30
+        Interval: 5
         Timeout: 5
         UnhealthyThreshold: 2
         HealthyThreshold: 3
@@ -335,8 +364,8 @@ Resources:
         - !Ref Node1
         - !Ref Node2
 
-# Outputs: TODO
-#   vpc
-#   security group
-#   subnets
-#   elb name
+Outputs:
+  VisualizerURL:
+    Description: The URL of the load balancer that serves the Visualizer service
+    Value: !Sub "http://${ELB.CanonicalHostedZoneName}"
+
