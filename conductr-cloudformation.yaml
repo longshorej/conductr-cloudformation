@@ -8,6 +8,11 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
+          default: Reactive Platform Credentials
+        Parameters:
+          - LightbendUser
+          - LightbendPassword
+      - Label:
           default: Network Configuration
         Parameters:
           - VpcCidrBlock
@@ -31,6 +36,13 @@ Parameters:
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: The EC2 key pair to use to SSH to your new ConductR instances. Be sure that you have a copy of the private key.
+  LightbendUser:
+    Type: String
+    Description: Your Reactive Platform username from https://www.lightbend.com/product/lightbend-reactive-platform/credentials
+  LightbendPassword:
+    Type: String
+    NoEcho: true
+    Description: Your Reactive Platform password from https://www.lightbend.com/product/lightbend-reactive-platform/credentials
 
 # Mappings:
   # TODO: add a lookup from AWS region to AMI ID
@@ -201,8 +213,18 @@ Resources:
   Node0:
     Type: AWS::EC2::Instance
     DependsOn: VPCGatewayAttachment
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            00_environment:
+              command: su ubuntu /home/ubuntu/environment.sh
+              cwd: /home/ubuntu
+              env:
+                LIGHTBEND_USER: !Ref LightbendUser
+                LIGHTBEND_PASSWORD: !Ref LightbendPassword
     Properties:
-      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet0.AvailabilityZone
@@ -211,6 +233,10 @@ Resources:
           AssociatePublicIpAddress: "true"
           GroupSet: [ !Ref NodesSecurityGroup ]
           SubnetId: !Ref Subnet0
+      UserData:
+        'Fn::Base64': !Sub |
+           #!/bin/bash -xe
+           /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node0 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 0
@@ -219,8 +245,19 @@ Resources:
   Node1:
     Type: AWS::EC2::Instance
     DependsOn: VPCGatewayAttachment
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            00_environment:
+              command: su ubuntu /home/ubuntu/environment.sh
+              cwd: /home/ubuntu
+              env:
+                LIGHTBEND_USER: !Ref LightbendUser
+                LIGHTBEND_PASSWORD: !Ref LightbendPassword
+                SEED_NODE: !GetAtt Node0.PrivateIp
     Properties:
-      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet1.AvailabilityZone
@@ -229,6 +266,10 @@ Resources:
           AssociatePublicIpAddress: "true"
           GroupSet: [ !Ref NodesSecurityGroup ]
           SubnetId: !Ref Subnet1
+      UserData:
+        'Fn::Base64': !Sub |
+           #!/bin/bash -xe
+           /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node1 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 1
@@ -237,8 +278,19 @@ Resources:
   Node2:
     Type: AWS::EC2::Instance
     DependsOn: VPCGatewayAttachment
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            00_environment:
+              command: su ubuntu /home/ubuntu/environment.sh
+              cwd: /home/ubuntu
+              env:
+                LIGHTBEND_USER: !Ref LightbendUser
+                LIGHTBEND_PASSWORD: !Ref LightbendPassword
+                SEED_NODE: !GetAtt Node0.PrivateIp
     Properties:
-      ImageId: ami-dd679fcb # TODO: look up based on region (see "Mappings" above)
+      ImageId: ami-ca4ab2dc # TODO: look up based on region (see "Mappings" above)
       KeyName: !Ref KeyName
       InstanceType: "t2.xlarge" # TODO: make configurable?
       AvailabilityZone: !GetAtt Subnet2.AvailabilityZone
@@ -247,6 +299,10 @@ Resources:
           AssociatePublicIpAddress: "true"
           GroupSet: [ !Ref NodesSecurityGroup ]
           SubnetId: !Ref Subnet2
+      UserData:
+        'Fn::Base64': !Sub |
+           #!/bin/bash -xe
+           /usr/local/bin/cfn-init -v --stack ${AWS::StackName} --resource Node2 --region ${AWS::Region}
       Tags:
         - Key: Name
           Value: Lightbend Cluster Node 2
