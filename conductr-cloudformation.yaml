@@ -1,0 +1,215 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Create Lightbend Production Suite demo
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VpcCidrBlock
+          - SubnetCidrBlocks
+
+Parameters:
+  VpcCidrBlock:
+    Type: String
+    Default: "10.23.0.0/16"
+    Description: The CIDR block for the new VPC.
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid VPC CIDR block (see http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/VPC_Subnets.html)
+  SubnetCidrBlocks:
+    Type: CommaDelimitedList
+    Default: "10.23.0.0/24, 10.23.1.0/24, 10.23.2.0/24"
+    Description: CIDR blocks for the three subnets, separated by commas. These must fall within the VPC CIDR block.
+
+Resources:
+  # The network: a VPC, three public subnets, and a route to the internet
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster VPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Internet Gateway
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  Subnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [ 0, !Ref SubnetCidrBlocks ]
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - "Lightbend Cluster Subnet ${AZ}"
+            - AZ: !Select [ 0, !GetAZs "" ]
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [ 1, !Ref SubnetCidrBlocks ]
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - "Lightbend Cluster Subnet ${AZ}"
+            - AZ: !Select [ 1, !GetAZs "" ]
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [ 2, !Ref SubnetCidrBlocks ]
+      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub
+            - "Lightbend Cluster Subnet ${AZ}"
+            - AZ: !Select [ 2, !GetAZs "" ]
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Route Table
+  RouteToInternet:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      GatewayId: !Ref InternetGateway
+      DestinationCidrBlock: 0.0.0.0/0
+  RouteTableAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet0
+      RouteTableId: !Ref RouteTable
+  RouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet1
+      RouteTableId: !Ref RouteTable
+  RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet2
+      RouteTableId: !Ref RouteTable
+
+  # Security groups:
+  #   - allow ingress for HTTP(S) to the load balancer and SSH to the EC2 instances
+  #   - allow EC2 instances to connect to each other for internal communication
+  #   - allow the load balancer to connect to instances for health checks and routing HTTP
+  IngressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Ingress Security Group to Lightbend Cluster
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Ingress Security Group
+  NodesSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Lightbend Cluster Nodes
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # SSH
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        # Health
+        - IpProtocol: tcp
+          FromPort: 9009
+          ToPort: 9009
+          SourceSecurityGroupId: !Ref IngressSecurityGroup
+        # Visualizer
+        - IpProtocol: tcp
+          FromPort: 9999
+          ToPort: 9999
+          SourceSecurityGroupId: !Ref IngressSecurityGroup
+      Tags:
+        - Key: Name
+          Value: Lightbend Cluster Nodes Security Group
+  NodesAgentRemotePortRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref NodesSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2552
+      ToPort: 2552
+      SourceSecurityGroupId: !Ref NodesSecurityGroup
+  NodesInternalPortsRule:
+    # Akka remoting, control protocol, bundle transfer
+    # Status server, service locator
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref NodesSecurityGroup
+      IpProtocol: tcp
+      FromPort: 9004
+      ToPort: 9008
+      SourceSecurityGroupId: !Ref NodesSecurityGroup
+  NodesBundleEndpointPortsRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref NodesSecurityGroup
+      IpProtocol: tcp
+      FromPort: 10000
+      ToPort: 10999
+      SourceSecurityGroupId: !Ref NodesSecurityGroup
+
+  # Load Balancer
+  ELB:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      CrossZone: true
+      Subnets:
+        - !Ref Subnet0
+        - !Ref Subnet1
+        - !Ref Subnet2
+      SecurityGroups:
+        - !Ref IngressSecurityGroup
+      Listeners:
+        - Protocol: HTTP
+          LoadBalancerPort: 80
+          InstancePort: 9999
+      HealthCheck:
+        Target: HTTP:9009/status
+        Interval: 30
+        Timeout: 5
+        UnhealthyThreshold: 2
+        HealthyThreshold: 3
+
+# Outputs: TODO
+#   vpc
+#   security group
+#   subnets
+#   elb name
