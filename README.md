@@ -11,3 +11,5 @@ To create this stack, load [conductr-cloudformation.yml](https://s3.amazonaws.co
 ## Deployment
 
 To update the template, replace [conductr-cloudformation.yml](https://s3.amazonaws.com/downloads.typesafe.com/conductr/conductr-cloudformation.yaml) with the updated version.
+
+The cloudformation playbook of [conductr-ansible](https://github.com/typesafehub/conductr-ansible) can be used to update the AMI.
