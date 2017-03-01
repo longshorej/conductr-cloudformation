@@ -5,8 +5,6 @@ conduct run conductr-haproxy --scale $NODE_COUNT
 
 sudo service haproxy restart
 
-sleep 5
-
 ES_COUNT=$NODE_COUNT
 
 conduct load conductr-elasticsearch
