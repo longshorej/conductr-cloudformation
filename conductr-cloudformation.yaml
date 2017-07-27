@@ -52,6 +52,8 @@ Mappings:
       AMI: ami-ca4ab2dc
     us-west-2:
       AMI: ami-8044ffe0
+    eu-west-1:
+      AMI: ami-de3f0cb8
 
 Resources:
   # The network: a VPC, three public subnets, and a route to the internet
