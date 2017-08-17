@@ -308,9 +308,11 @@ Resources:
                 LIGHTBEND_USER: !Ref LightbendUser
                 LIGHTBEND_PASSWORD: !Ref LightbendPassword
                 SEED_NODE: !GetAtt Node0.PrivateIp
-            01_wait:
-              command: sleep 10
-            02_bundles:
+            01_update_conductr-cli:
+              command: sudo pip3 install --upgrade pip && sudo pip3 install -U conductr-cli
+            02_wait:
+              command: timeout 1000 bash -c 'until conduct members --host \"$(hostname -i)\"; do sleep 10; done' || echo timed out
+            03_bundles:
               command: su ubuntu /home/ubuntu/bundles.sh
               cwd: /home/ubuntu
               env:
